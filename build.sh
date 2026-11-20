@@ -50,7 +50,7 @@ NINJA="${NINJA_BIN:-$(command -v ninja || true)}"
 JAVAC="${JAVAC:-$(command -v javac || true)}"
 JAR="${JAR:-$(command -v jar || true)}"
 
-HOST_BIN="$(find "$NDK/toolchains/llvm/prebuilt" -mindepth 2 -maxdepth 2 -type d -name bin 2>/dev/null | head -1)"
+HOST_BIN="$(find "$NDK/toolchains/llvm/prebuilt" -mindepth 2 -maxdepth 2 -type d -name bin -print -quit 2>/dev/null)"
 [[ -n "$HOST_BIN" && -x "$HOST_BIN/clang++" ]] || {
     echo "ERROR: no clang++ under $NDK/toolchains/llvm/prebuilt" >&2; exit 1; }
 [[ -n "$CMAKE" && -x "$CMAKE" ]] || { echo "ERROR: cmake not found (3.28+)" >&2; exit 1; }
