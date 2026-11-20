@@ -1,0 +1,11 @@
+# Build output
+build/
+out/
+*.so
+*.dex
+*.o
+*.jar
+*.class
+
+# Local tooling
+.DS_Store

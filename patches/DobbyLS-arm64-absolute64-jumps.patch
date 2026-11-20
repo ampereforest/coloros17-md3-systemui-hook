@@ -1,0 +1,63 @@
+diff --git a/source/TrampolineBridge/Trampoline/arm64/trampoline_arm64.cc b/source/TrampolineBridge/Trampoline/arm64/trampoline_arm64.cc
+index c921683..2536e0d 100644
+--- a/source/TrampolineBridge/Trampoline/arm64/trampoline_arm64.cc
++++ b/source/TrampolineBridge/Trampoline/arm64/trampoline_arm64.cc
+@@ -16,19 +16,11 @@ CodeBufferBase *GenerateNormalTrampolineBuffer(addr_t from, addr_t to) {
+   TurboAssembler turbo_assembler_((void *)from);
+ #define _ turbo_assembler_.
+ 
+-  uint64_t distance = llabs((int64_t)(from - to));
+-  uint64_t adrp_range = ((uint64_t)1 << (2 + 19 + 12 - 1));
+-  if (distance < adrp_range) {
+-    // adrp, add, br
+-    _ AdrpAdd(TMP_REG_0, from, to);
+-    _ br(TMP_REG_0);
+-    DLOG(0, "[trampoline] use [adrp, add, br]");
+-  } else {
+-    // ldr, br, branch-address
+-    CodeGen codegen(&turbo_assembler_);
+-    codegen.LiteralLdrBranch((uint64_t)to);
+-    DLOG(0, "[trampoline] use [ldr, br, #label]");
+-  }
++  // A fixed-width absolute jump avoids both ADRP range assumptions and a
++  // runtime literal-pool load. Keep all four pieces, including bits 32..63:
++  // Android's address randomization can place ART/module mappings >4 GiB apart.
++  _ Mov(TMP_REG_0, static_cast<uint64_t>(to));
++  _ br(TMP_REG_0);
+ #undef _
+ 
+   // Bind all labels
+diff --git a/source/core/assembler/assembler-arm64.h b/source/core/assembler/assembler-arm64.h
+index 53b8c2a..573a655 100644
+--- a/source/core/assembler/assembler-arm64.h
++++ b/source/core/assembler/assembler-arm64.h
+@@ -438,7 +438,10 @@ private:
+ 
+   // load helpers.
+   void EmitLoadRegLiteral(LoadRegLiteralOp op, CPURegister rt, int64_t imm) {
+-    const int32_t encoding = op | LeftShift(imm, 26, 5) | Rt(rt);
++    // imm is a byte displacement; A64 literal loads encode signed imm19*4.
++    // The old unscaled 26-bit insertion also overwrote opcode bits for negatives.
++    const uint32_t imm19 = static_cast<uint32_t>(imm >> 2) & 0x7ffffU;
++    const uint32_t encoding = op | (imm19 << 5) | Rt(rt);
+     Emit(encoding);
+   }
+ 
+diff --git a/source/core/codegen/codegen-arm64.cc b/source/core/codegen/codegen-arm64.cc
+index 41e209e..75dc546 100644
+--- a/source/core/codegen/codegen-arm64.cc
++++ b/source/core/codegen/codegen-arm64.cc
+@@ -11,10 +11,9 @@ void CodeGen::LiteralLdrBranch(uint64_t address) {
+   auto turbo_assembler_ = reinterpret_cast<TurboAssembler *>(this->assembler_);
+ #define _ turbo_assembler_->
+ 
+-  auto dst_label = new RelocLabel(address);
+-  turbo_assembler_->AppendRelocLabel(dst_label);
+-
+-  _ Ldr(TMP_REG_0, dst_label);
++  // Use the same literal-free absolute jump for relocated-function tails.
++  // This also leaves the original PACIASP/SP relationship intact.
++  _ Mov(TMP_REG_0, address);
+   _ br(TMP_REG_0);
+ 
+ #undef _
